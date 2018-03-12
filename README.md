@@ -1,1 +1,6 @@
 # bluetoothChatInterfaces
+
+开发了一套用于ios移动设备之间的蓝牙通讯接口
+具备实现双方或者多方通信的必须接口，接口描述较详细，容易直接调用以实现ios设备间通信。
+
+其中若使用bluetooth类，则必须实现bluetoothDelegate协议，协议中主要是require方法，这是为保证安全的通信而设计的。
