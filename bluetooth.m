@@ -239,20 +239,20 @@
     return YES;
 }
 
-- (BOOL) sendImageToPeer:(UIImage *)image {
-
-    // 区别是否需要 发送消息回调
-    self.sendMsgAction = nil;
-    //外设端
-    if([self.chatRole isEqualToString:@"peripheral"]) {
-
-        return [self sendImageFromPeripheral:image];
-    }
-    else {
-
-        return [self sendImageFromCentral:image];
-    }
-}
+//- (BOOL) sendImageToPeer:(UIImage *)image {
+//
+//    // 区别是否需要 发送消息回调
+//    self.sendMsgAction = nil;
+//    //外设端
+//    if([self.chatRole isEqualToString:@"peripheral"]) {
+//
+//        return [self sendImageFromPeripheral:image];
+//    }
+//    else {
+//
+//        return [self sendImageFromCentral:image];
+//    }
+//}
 
 //- (BOOL) sendImageToPeer:(UIImage *)image sendAction:(void (^)(BOOL))action {
 //}
@@ -1035,60 +1035,60 @@
 }
 // 发送图片等文件类
 // 返回错误--1.尺寸超过 2.失去连接对象
-- (BOOL) sendImageFromCentral :(UIImage *)message {
-
-    // 判断central端发送消息尺寸限制
-    // 512bytes 是在iphone6 设备上的测试结果，其他设备待测试
-    
-    
-    NSData *imageData = UIImageJPEGRepresentation(message, 0.1);
-//    NSInteger imageDataLength = [imageData length];  // 长度超512则
-    NSString *imageDataString = [imageData base64EncodedStringWithOptions:NSDataBase64Encoding64CharacterLineLength];
-    NSDictionary *messageFromCentral = [self generateImageMessage:imageDataString];
-    
-//    NSDictionary *messageFromCentral = [self generateImageMessageData:imageData];
-//    使用 dataWithJSONObject 时，参数json的顶层元素必须是 NSArray或NSDictionary，组成员素不能有NSData
-    
-    NSData *infoData = [NSJSONSerialization dataWithJSONObject:messageFromCentral
-                                                       options:NSJSONWritingPrettyPrinted
-                                                         error:nil];
-    
-    if(!self.peripheralsFollow || self.peripheralsFollow.count == 0) {
-        return NO;
-    }
-    [self.peripheralsFollow[0] writeValue:infoData
-                        forCharacteristic:self.characteristicFollow
-                                     type:CBCharacteristicWriteWithResponse];
-    return YES;
-}
-- (BOOL) sendImageFromPeripheral :(UIImage *)message {
-
-    // 判断paripheral端发送消息尺寸限制
-//    NSInteger maxLength = [self.centralsMaxMessageLength[0] integerValue];
-
-    NSData *imageData = UIImageJPEGRepresentation(message, 1);
-    //根据尺寸大小  进行压缩比例调节
-//    NSInteger *imageDataLength = imageData.length;
-//    if(imageDataLength > maxLength) {
+//- (BOOL) sendImageFromCentral :(UIImage *)message {
 //
+//    // 判断central端发送消息尺寸限制
+//    // 512bytes 是在iphone6 设备上的测试结果，其他设备待测试
+//
+//
+//    NSData *imageData = UIImageJPEGRepresentation(message, 0.1);
+////    NSInteger imageDataLength = [imageData length];  // 长度超512则
+//    NSString *imageDataString = [imageData base64EncodedStringWithOptions:NSDataBase64Encoding64CharacterLineLength];
+//    NSDictionary *messageFromCentral = [self generateImageMessage:imageDataString];
+//
+////    NSDictionary *messageFromCentral = [self generateImageMessageData:imageData];
+////    使用 dataWithJSONObject 时，参数json的顶层元素必须是 NSArray或NSDictionary，组成员素不能有NSData
+//
+//    NSData *infoData = [NSJSONSerialization dataWithJSONObject:messageFromCentral
+//                                                       options:NSJSONWritingPrettyPrinted
+//                                                         error:nil];
+//
+//    if(!self.peripheralsFollow || self.peripheralsFollow.count == 0) {
 //        return NO;
 //    }
-    
-    NSString *imageDataString = [imageData base64EncodedStringWithOptions:NSDataBase64Encoding64CharacterLineLength];
-    NSDictionary *messageFromPeripheral = [self generateImageMessage:imageDataString];
-    NSData *data = [NSJSONSerialization dataWithJSONObject:messageFromPeripheral
-                                                   options:NSJSONWritingPrettyPrinted
-                                                     error:nil];
-
-    self.tempCharacteristicValue = data;
-    if(!self.centralsFollow || self.centralsFollow.count == 0) {
-        return NO;
-    }
-    [self.peripheralManager updateValue:data
-                      forCharacteristic:self.characteristicForAdv
-                   onSubscribedCentrals:self.centralsFollow];
-    return YES;
-}
+//    [self.peripheralsFollow[0] writeValue:infoData
+//                        forCharacteristic:self.characteristicFollow
+//                                     type:CBCharacteristicWriteWithResponse];
+//    return YES;
+//}
+//- (BOOL) sendImageFromPeripheral :(UIImage *)message {
+//
+//    // 判断paripheral端发送消息尺寸限制
+////    NSInteger maxLength = [self.centralsMaxMessageLength[0] integerValue];
+//
+//    NSData *imageData = UIImageJPEGRepresentation(message, 1);
+//    //根据尺寸大小  进行压缩比例调节
+////    NSInteger *imageDataLength = imageData.length;
+////    if(imageDataLength > maxLength) {
+////
+////        return NO;
+////    }
+//
+//    NSString *imageDataString = [imageData base64EncodedStringWithOptions:NSDataBase64Encoding64CharacterLineLength];
+//    NSDictionary *messageFromPeripheral = [self generateImageMessage:imageDataString];
+//    NSData *data = [NSJSONSerialization dataWithJSONObject:messageFromPeripheral
+//                                                   options:NSJSONWritingPrettyPrinted
+//                                                     error:nil];
+//
+//    self.tempCharacteristicValue = data;
+//    if(!self.centralsFollow || self.centralsFollow.count == 0) {
+//        return NO;
+//    }
+//    [self.peripheralManager updateValue:data
+//                      forCharacteristic:self.characteristicForAdv
+//                   onSubscribedCentrals:self.centralsFollow];
+//    return YES;
+//}
 
 #pragma mark - 消息封装
 // 消息封装接口
@@ -1115,16 +1115,16 @@
     return [retMsg copy];
 }
 // 发送图片
-- (NSDictionary *) generateImageMessage :(NSString *)message {
-
-    NSMutableDictionary *retMsg = [[NSMutableDictionary alloc] init];
-    
-    NSNumber *messageTypeImage = [NSNumber numberWithInt : DDBluetoothMessageTypeImage];
-    [retMsg setObject:messageTypeImage forKey:DDBluetoothMessageTypeKey];
-    [retMsg setObject:message forKey:DDBluetoothMessageContentKey];
-    
-    return [retMsg copy];
-}
+//- (NSDictionary *) generateImageMessage :(NSString *)message {
+//
+//    NSMutableDictionary *retMsg = [[NSMutableDictionary alloc] init];
+//
+//    NSNumber *messageTypeImage = [NSNumber numberWithInt : DDBluetoothMessageTypeImage];
+//    [retMsg setObject:messageTypeImage forKey:DDBluetoothMessageTypeKey];
+//    [retMsg setObject:message forKey:DDBluetoothMessageContentKey];
+//
+//    return [retMsg copy];
+//}
 // 发送自己信息给对端（给peripheral端）
 - (NSDictionary *) generateHelloMessage :(NSDictionary *)message {
     

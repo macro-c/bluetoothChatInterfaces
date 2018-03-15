@@ -124,17 +124,17 @@ typedef void (^sendMsgAction)(BOOL successOrFail);
 - (BOOL) sendMessageToPeer :(NSString *)message sendAction:(void (^)(BOOL success))action;
 
 
-// 发送图片 暂时取消，限制于蓝牙数据报式传输，和单次传输的大小限制
-- (BOOL) sendImageToPeer :(UIImage *)image;
 
+
+
+// 发送图片 暂时取消，限制于蓝牙数据报式传输，和单次传输的大小限制
+//- (BOOL) sendImageToPeer :(UIImage *)image;
 
 // 发送图片
 // 传递成功失败的回调
 // 返回值，接口的调用成功（失败情况：上一次调用此接口未结束--未超时或回调）
 // 使用时一定注意循环引用问题！！！！！！！！！
-- (BOOL) sendImageToPeer :(UIImage *)image sendAction:(void (^)(BOOL success))action;
-
-
+//- (BOOL) sendImageToPeer :(UIImage *)image sendAction:(void (^)(BOOL success))action;
 
 // 发送文件、、、、、
 // 文件等其他类型应该提供其他接口
