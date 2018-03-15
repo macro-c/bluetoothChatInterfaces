@@ -12,25 +12,26 @@
 
 @interface DDBluetooth()
 
+
 /*
  central端使用属性
  **/
-
 @property (nonatomic, strong) CBCentralManager *centralManager;
-// central可用状态（程序未使用）
+// central可用状态（保留，程序未使用）
 @property (nonatomic, assign) BOOL centralAvailable;
 // 扫描计数器
 @property (nonatomic, strong) NSTimer *scanDeviceTimer;
-// 扫描次数，定时清理设备列表
+// 扫描次数，用于定时清理设备列表
+// 因为扫描的返回值只是当前可连接的设备，因此需要定时清理设备，尽量保证设备列表的设备有效
 @property (nonatomic, assign) NSInteger scanTimes;
 // 保存收听的peripherals
 @property (nonatomic, strong) NSMutableArray<CBPeripheral *> *peripheralsFollow;
 // 当前central所监听的特征
 @property (nonatomic, strong) CBCharacteristic *characteristicFollow;
 // 暂存当前正在遍历服务和特征值的 CBPeripheral实例，
-// 此实例需要暂存，否则很可能使此次连接失效
+// 此实例需要暂存，否则很可能使此次连接失效，强引用使其保持有效
 @property (nonatomic, strong) CBPeripheral *peripheralToHandle;
-// 暂存当前主动连接对象的名称
+// 当前主动连接对象的名称
 @property (nonatomic, strong) NSString *peripheralName;
 
 
@@ -40,16 +41,17 @@
 @property (nonatomic, strong) CBPeripheralManager *peripheralManager;
 // 保存被收听的centrals
 @property (nonatomic, strong) NSMutableArray<CBCentral *> *centralsFollow;
-// 保存每个central对应消息最长值
+// 保存发送至每个central的消息最长值
 @property (nonatomic, strong) NSMutableArray<NSNumber *> *centralsMaxMessageLength;
 // 当前外设的服务和特征
 @property (nonatomic, strong) CBMutableCharacteristic *characteristicForAdv;
 @property (nonatomic, strong) CBMutableService *service;
 @property (nonatomic, strong) NSString *serviceUUID;
 @property (nonatomic, strong) NSString *characterUUID;
-// 自定义用户名，手动筛选
+// 自定义用户名
 @property (nonatomic, strong) NSString *userName;
 // 暂存更新的特征值
+// 当外设端忙碌时不能立即发送，需要暂存至可用时发送
 @property (nonatomic, strong) NSData *tempCharacteristicValue;
 
 
@@ -60,7 +62,7 @@
 @property (nonatomic, assign) BOOL appAuthorizedStatus;
 // 针对应用间安全验证--思路：对方随机产生一个数字，在appUUID中作为索引找到相应字符,返回验证（双向）
 @property (nonatomic, strong) NSString *appUUID;
-// 用户名，固定，central连接时首先筛选name
+// 用户名前缀，固定，central扫描设备时首先筛选name前缀
 @property (nonatomic, strong) NSString *userNamePrifix;
 // 固定消息，表示peripheral端主动关闭
 @property (nonatomic, strong) NSString *peripheralStopChatMessage;
@@ -294,7 +296,8 @@
     
     CBPeripheral *peripheralToConnect = [self.deviceArray[index] objectForKey:@"peripheral"];
     
-    self.peripheralName = [self.deviceArray[index] objectForKey:@"peripheralName"];
+    NSInteger namePrefixLength = self.userNamePrifix.length;
+    self.peripheralName = [[self.deviceArray[index] objectForKey:@"peripheralName"] substringFromIndex:namePrefixLength];
     
     if(!peripheralToConnect) {
         return;
@@ -423,7 +426,7 @@
                     peripheralNameExist = @"";
                 }
                 NSDictionary *dict = @{@"peripheral":peripheral, @"RSSI":RSSI,@"peripheralName":peripheralNameExist,@"deviceDistance":dis};
-                [_deviceArray replaceObjectAtIndex:i withObject:dict];
+                [self.deviceArray replaceObjectAtIndex:i withObject:dict];
             }
         }
         if( !isExist ) {
