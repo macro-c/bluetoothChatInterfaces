@@ -30,6 +30,8 @@
 // 暂存当前正在遍历服务和特征值的 CBPeripheral实例，
 // 此实例需要暂存，否则很可能使此次连接失效
 @property (nonatomic, strong) CBPeripheral *peripheralToHandle;
+// 暂存当前主动连接对象的名称
+@property (nonatomic, strong) NSString *peripheralName;
 
 
 /*
@@ -190,13 +192,15 @@
 
 - (void) sendMessageToPeer:(NSString *)message {
     
+    NSDictionary *messageFromAll = [self generateChatMessage:message];
     //外设端
     if([self.chatRole isEqualToString:@"peripheral"]) {
         
-        [self sendMessageFromPeripheral:message isNotification:NO];
+        [self sendMessageFromPeripheral:messageFromAll];
     }
     else {
-        [self sendMessageFromCentral:message isNotification:NO];
+        
+        [self sendMessageFromCentral:messageFromAll];
     }
     // 区别是否需要 发送消息回调
     self.sendMsgAction = nil;
@@ -260,7 +264,8 @@
     
     if(self.peripheralsFollow.count != 0 && [self.chatRole isEqualToString:@"central"]) {
         
-        [self sendMessageFromCentral:self.peripheralStopChatMessage isNotification:YES];
+        NSDictionary *stopChatMessage = [self generateNotificationMessage:self.peripheralStopChatMessage];
+        [self sendMessageFromCentral:stopChatMessage];
         [self.centralManager stopScan];
         [self releaseProperties];
     }
@@ -268,7 +273,8 @@
     if(self.centralsFollow.count != 0 && [self.chatRole isEqualToString:@"peripheral"]) {
         
         // peripheral端无法以接口关闭连接，并让对方感知；所以发送 peripheralStopChatMessage 消息，表示外设端已关闭
-        [self sendMessageFromPeripheral:self.peripheralStopChatMessage isNotification:YES];
+        NSDictionary *stopChatMessage = [self generateNotificationMessage:self.peripheralStopChatMessage];
+        [self sendMessageFromPeripheral:stopChatMessage];
         [self releaseProperties];
     }
     
@@ -287,6 +293,9 @@
     }
     
     CBPeripheral *peripheralToConnect = [self.deviceArray[index] objectForKey:@"peripheral"];
+    
+    self.peripheralName = [self.deviceArray[index] objectForKey:@"peripheralName"];
+    
     if(!peripheralToConnect) {
         return;
     }
@@ -522,9 +531,18 @@
             [self.peripheralsFollow addObject: peripheral];
             self.characteristicFollow = character;
             
-            if([self.unNamedDelegate respondsToSelector:@selector(connectionIsOk)]) {
+            if([self.unNamedDelegate respondsToSelector:@selector(connectionIsOk:)]) {
                 
-                [self.unNamedDelegate connectionIsOk];
+                NSMutableDictionary *myInfo = [[NSMutableDictionary alloc] init];
+                [myInfo setObject:self.peripheralName forKey:DDBluetoothMessagePeerNameKey];
+                NSDictionary *helloMessageToSelf = [self generateHelloMessage:myInfo];
+                [self.unNamedDelegate connectionIsOk:helloMessageToSelf];
+                
+                //central端发送自己信息给对端，使对方连接成功后的回调附加消息，复用peerInfo对象
+                NSMutableDictionary *peerInfo = [[NSMutableDictionary alloc] init];
+                [peerInfo setObject:self.userName forKey:DDBluetoothMessagePeerNameKey];
+                NSDictionary *helloMessageToPeer = [self generateHelloMessage:peerInfo];
+                [self sendMessageFromCentral:helloMessageToPeer];
                 
                 //关闭广播
                 [self.peripheralManager stopAdvertising];
@@ -615,7 +633,8 @@
             NSString *chatStringMessage = [message objectForKey:DDBluetoothMessageContentKey];
             [self.unNamedDelegate recvMessage:chatStringMessage];
         }
-        [self sendMessageFromCentral:self.replyMessage isNotification:YES];
+        NSDictionary *replyMessage = [self generateNotificationMessage:self.replyMessage];
+        [self sendMessageFromCentral:replyMessage];
     }
 //    else if(isImageMessage) {
 //
@@ -764,14 +783,13 @@
         [self addCentralToDeviceArray:central maxMessageLength:maxLengthToSend];
         
         // 至此，作为peripheral端的连接已经完成
-        if([self.unNamedDelegate respondsToSelector:@selector(connectionIsOk)]) {
-            
-            [self.unNamedDelegate connectionIsOk];
-            
+        // 由于peripheral端无法主动得知对方信息，所以这里回调函数无法返回peerInfo
+        // if([self.unNamedDelegate respondsToSelector:@selector(connectionIsOk:)]) {
+        
+            //[self.unNamedDelegate connectionIsOk:];
             //关闭广播
-            [self.peripheralManager stopAdvertising];
-            //[self.centralManager stopScan];
-        }
+            //[self.peripheralManager stopAdvertising];
+        //}
         
         self.chatRole = @"peripheral";
         [self.peripheralManager stopAdvertising];
@@ -839,6 +857,19 @@
         }
         return;
     }
+    // hello消息
+    else if(isNotificationMessage && [info isEqualToString:@"helloMessage"]) {
+        
+        // 此时认为 peripheral端完成连接
+        if([self.unNamedDelegate respondsToSelector:@selector(connectionIsOk:)]) {
+        
+            [self.unNamedDelegate connectionIsOk:message];
+            //关闭广播
+            [self.peripheralManager stopAdvertising];
+        }
+        
+        return;
+    }
     else if(isChatMessage) {
         
         if(self.unNamedDelegate && [self.unNamedDelegate respondsToSelector:@selector(recvMessage:)]) {
@@ -846,7 +877,8 @@
             NSString *chatStringMessage = [message objectForKey:DDBluetoothMessageContentKey];
             [self.unNamedDelegate recvMessage:chatStringMessage];
         }
-        [self sendMessageFromPeripheral:self.replyMessage isNotification:YES];
+        NSDictionary *replyMessage = [self generateNotificationMessage:self.replyMessage];
+        [self sendMessageFromPeripheral:replyMessage];
     }
 //    else if (isImageMessage) {
 //
@@ -974,19 +1006,9 @@
 #pragma mark - 具体发送消息接口
 
 // 通信接口
-- (void) sendMessageFromCentral :(NSString *)message isNotification:(BOOL)isNotification {
+- (void) sendMessageFromCentral :(NSDictionary *)message {
     
-    NSDictionary *messageFromCentral;
-    if(isNotification) {
-        
-        messageFromCentral = [self generateNotificationMessage:message];
-    }
-    else {
-        
-        messageFromCentral = [self generateChatMessage:message];
-    }
-    
-    NSData *infoData = [NSJSONSerialization dataWithJSONObject:messageFromCentral
+    NSData *infoData = [NSJSONSerialization dataWithJSONObject:message
                                                        options:NSJSONWritingPrettyPrinted
                                                          error:nil];
     
@@ -997,19 +1019,9 @@
                         forCharacteristic:self.characteristicFollow
                                      type:CBCharacteristicWriteWithResponse];
 }
-- (void) sendMessageFromPeripheral :(NSString *)message isNotification:(BOOL)isNotification {
+- (void) sendMessageFromPeripheral :(NSDictionary *)message {
     
-    NSDictionary *messageFromPeripheral;
-    if(isNotification) {
-        
-        messageFromPeripheral = [self generateNotificationMessage:message];
-    }
-    else {
-        
-        messageFromPeripheral = [self generateChatMessage:message];
-    }
-    
-    NSData *data = [NSJSONSerialization dataWithJSONObject:messageFromPeripheral
+    NSData *data = [NSJSONSerialization dataWithJSONObject:message
                                                    options:NSJSONWritingPrettyPrinted
                                                      error:nil];
     
@@ -1113,18 +1125,32 @@
     
     return [retMsg copy];
 }
+// 发送自己信息给对端（给peripheral端）
+- (NSDictionary *) generateHelloMessage :(NSDictionary *)message {
+    
+    NSNumber *messageTypeNotification = [NSNumber numberWithInt : DDBluetoothMessageTypeNotification];
+    
+    NSMutableDictionary *returnDic = [message mutableCopy];
+    [returnDic setObject:messageTypeNotification forKey:DDBluetoothMessageTypeKey];
+    [returnDic setObject:@"helloMessage" forKey:DDBluetoothMessageContentKey];
+    
+    return returnDic;
+}
+
 
 
 #pragma mark - 断开连接
 // 主动关闭连接  双方
 - (void) shutDownConnectionFromCentral {
     
-    [self sendMessageFromCentral:self.peripheralStopChatMessage isNotification:YES];
+    NSDictionary *stopMessage = [self generateNotificationMessage:self.peripheralStopChatMessage];
+    [self sendMessageFromCentral:stopMessage];
     [self connectionRelease];
 }
 - (void) shutDownConnectionFromPeripheral {
     
-    [self sendMessageFromPeripheral:self.peripheralStopChatMessage isNotification:YES];
+    NSDictionary *stopMessage = [self generateNotificationMessage:self.peripheralStopChatMessage];
+    [self sendMessageFromPeripheral:stopMessage];
     //[self connectionRelease];  //外设主动关闭不走释放，因为不是真正释放连接
 }
 

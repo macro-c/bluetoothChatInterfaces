@@ -26,6 +26,7 @@ typedef NS_ENUM(NSInteger, DDBluetoothMessageType) {
 
 #define DDBluetoothMessageTypeKey @"DDBluetoothMessageTypeKey"
 #define DDBluetoothMessageContentKey @"DDBluetoothMessageContentKey"
+#define DDBluetoothMessagePeerNameKey @"DDBluetoothMessagePeerNameKey"
 
 
 // 将bluetooth的所有相关代理放在framework中
@@ -43,7 +44,8 @@ typedef NS_ENUM(NSInteger, DDBluetoothMessageType) {
 
 // 连接设备成功
 // 外设端 / 中心端
-- (void) connectionIsOk;//:(NSDictionary *)peerInfo;
+// 主动连接，被连接都走这个
+- (void) connectionIsOk:(NSDictionary *)peerInfo;
 
 // 收到消息
 // 外设端 / 中心端
