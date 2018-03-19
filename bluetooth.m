@@ -10,6 +10,27 @@
 #define WEAK_SELF __weak typeof(self) weakSelf = self
 
 
+#define DDBluetoothMessageTypeKey               @"DDBluetoothMessageTypeKey"               //消息类型标识
+#define DDBluetoothMessageContentKey            @"DDBluetoothMessageContentKey"            //消息内容标识
+#define DDBluetoothMessagePeerNameKey           @"DDBluetoothMessagePeerNameKey"           //对端设备名称（连接完成后消息）
+#define DDBluetoothMessageImageSizeKey          @"DDBluetoothMessageImageInfoKey"          //图片准备消息--文件总尺寸
+#define DDBluetoothMessageImageArrayLengthKey   @"DDBluetoothMessageImageArrayLengthKey"   //图片准备消息--总分片数
+#define DDBluetoothMessageImagePieceSizeKey     @"DDBluetoothMessageImagePieceSizeKey"     //图片准备信息--分片尺寸
+
+
+/**
+ 消息类型
+ */
+typedef NS_ENUM(NSInteger, DDBluetoothMessageType) {
+    
+    DDBluetoothMessageTypeChat = 1,     //文字聊天信息
+    DDBluetoothMessageTypeNotification, //文字通知信息：连接成功发送设备信息，主动断开发送断开信息
+    DDBluetoothMessageTypeImageInfo,    //图片分片信息
+    DDBluetoothMessageTypeImageData,    //图片分片数据：图片传输过程中双方使用此信息
+};
+
+
+
 @interface DDBluetooth()
 
 
@@ -83,6 +104,25 @@
 // initiative主动的
 @property (nonatomic, assign) BOOL closeInitiative;
 
+
+// 发送图片等大文件 分片数组
+@property (nonatomic, strong) NSMutableArray<NSString *> *imageDataPiecesArraySend;
+// 接收图片  分片数组
+@property (nonatomic, strong) NSMutableArray<NSString *> *imageDataPiecesArrayRecv;
+// 接收图片，分片大小
+@property (nonatomic, assign) NSInteger recvImagePieceSize;
+// 接收图片，分片总数
+@property (nonatomic, assign) NSInteger recvImagePieceCount;
+// 接收图片，图总大小
+@property (nonatomic, assign) NSInteger recvImageDataSize;
+// 接收图片，已接收分片数
+@property (nonatomic, assign) NSInteger recvImageDataPieceSumCount;
+// 标识当前在传输图片
+@property (nonatomic, assign) BOOL centralImageSendMode;
+@property (nonatomic, assign) BOOL peripheralImageSendMode;
+@property (nonatomic, assign) BOOL centralImageRecvMode;
+@property (nonatomic, assign) BOOL peripheralImageRecvMode;
+
 @end
 
 
@@ -123,6 +163,13 @@
     self.receivdReply = NO;
     self.replyOverTime = NO;
     self.sendMsgHasReplied = YES;
+    
+    // 图片传输相关
+    self.centralImageSendMode = NO;
+    self.peripheralImageSendMode = NO;
+    self.centralImageRecvMode = NO;
+    self.peripheralImageRecvMode = NO;
+    self.recvImageDataPieceSumCount = 0;
     
     self.tempCharacteristicValue = [[NSData alloc] init];
 }
@@ -241,20 +288,20 @@
     return YES;
 }
 
-//- (BOOL) sendImageToPeer:(UIImage *)image {
-//
-//    // 区别是否需要 发送消息回调
-//    self.sendMsgAction = nil;
-//    //外设端
-//    if([self.chatRole isEqualToString:@"peripheral"]) {
-//
-//        return [self sendImageFromPeripheral:image];
-//    }
-//    else {
-//
-//        return [self sendImageFromCentral:image];
-//    }
-//}
+- (BOOL) sendImageToPeer:(UIImage *)image {
+
+    // 区别是否需要 发送消息回调
+    self.sendMsgAction = nil;
+    //外设端
+    if([self.chatRole isEqualToString:@"peripheral"]) {
+
+        return [self sendImageFromPeripheral:image];
+    }
+    else {
+
+        return [self sendImageFromCentral:image];
+    }
+}
 
 //- (BOOL) sendImageToPeer:(UIImage *)image sendAction:(void (^)(BOOL))action {
 //}
@@ -613,9 +660,14 @@
                                                             options:NSJSONReadingMutableContainers
                                                               error:nil];
     
-    BOOL isChatMessage = [[message objectForKey:DDBluetoothMessageTypeKey] integerValue]== DDBluetoothMessageTypeChat;
-    BOOL isNotificationMessage = [[message objectForKey:DDBluetoothMessageTypeKey] integerValue]==DDBluetoothMessageTypeNotification;
-//    BOOL isImageMessage = [[message objectForKey:DDBluetoothMessageTypeKey] integerValue]== DDBluetoothMessageTypeImage;
+    BOOL isChatMessage = [[message objectForKey:DDBluetoothMessageTypeKey]
+                          integerValue]== DDBluetoothMessageTypeChat;
+    BOOL isNotificationMessage = [[message objectForKey:DDBluetoothMessageTypeKey]
+                                  integerValue]==DDBluetoothMessageTypeNotification;
+    BOOL isImageInfoMessage = [[message objectForKey:DDBluetoothMessageTypeKey]
+                           integerValue]== DDBluetoothMessageTypeImageInfo;
+    BOOL isImageDataMessage = [[message objectForKey:DDBluetoothMessageTypeKey]
+                               integerValue] ==DDBluetoothMessageTypeImageData;
     
     NSString *info = [message objectForKey:DDBluetoothMessageContentKey];
     // 判断是否是固定回复，是否需要固定回复
@@ -629,32 +681,8 @@
         }
         return;
     }
-    else if(isChatMessage) {
-        
-        if(self.unNamedDelegate && [self.unNamedDelegate respondsToSelector:@selector(recvMessage:)]) {
-            
-            NSString *chatStringMessage = [message objectForKey:DDBluetoothMessageContentKey];
-            [self.unNamedDelegate recvMessage:chatStringMessage];
-        }
-        NSDictionary *replyMessage = [self generateNotificationMessage:self.replyMessage];
-        [self sendMessageFromCentral:replyMessage];
-    }
-//    else if(isImageMessage) {
-//
-//        if(self.unNamedDelegate && [self.unNamedDelegate respondsToSelector:@selector(recvImage:)]) {
-//
-//            NSString *imageDataString = [message objectForKey:DDBluetoothMessageContentKey];
-//            NSData *imageData = [[NSData alloc] initWithBase64EncodedString:imageDataString
-//                                                                    options:NSDataBase64DecodingIgnoreUnknownCharacters];
-//            UIImage *imageMessage = [UIImage imageWithData:imageData];
-//            [self.unNamedDelegate recvImage:imageMessage];
-//        }
-////        确认信息
-////        [self sendMessageFromCentral:self.replyMessage isNotification:YES];
-//    }
-    
-    // 对方主动关闭连接
-    if(isNotificationMessage && [info isEqualToString:self.peripheralStopChatMessage]) {
+    // 对端主动关闭
+    else if(isNotificationMessage && [info isEqualToString:self.peripheralStopChatMessage]) {
         if([self.unNamedDelegate respondsToSelector:@selector(shutDownByPeer)]) {
             
             [self.unNamedDelegate shutDownByPeer];
@@ -664,6 +692,24 @@
         
         NSLog(@"central端被主动关闭");
         return;
+    }
+    else if(isChatMessage) {
+        
+        [self handleChatMessageFromCentral:YES message:message];
+        return;
+    }
+    // 图片预备信息，切换当前传输图片mode，准备相应接收缓存区，记录图片的简单校验信息
+    else if(isImageInfoMessage) {
+        
+        self.centralImageRecvMode = YES;
+        [self handleImageInfoMessage:message];
+    }
+    else if(isImageDataMessage) {
+        
+        if(!self.centralImageRecvMode) {
+            return;
+        }
+        [self handleImageDataMessage:message];
     }
 }
 
@@ -840,10 +886,15 @@
     NSDictionary *message = [NSJSONSerialization JSONObjectWithData:data
                                                             options:NSJSONReadingMutableContainers
                                                               error:nil];
-    
-    BOOL isChatMessage = [[message objectForKey:DDBluetoothMessageTypeKey] integerValue]== DDBluetoothMessageTypeChat;
-    BOOL isNotificationMessage = [[message objectForKey:DDBluetoothMessageTypeKey] integerValue]==DDBluetoothMessageTypeNotification;
-//    BOOL isImageMessage = [[message objectForKey:DDBluetoothMessageTypeKey] integerValue]== DDBluetoothMessageTypeImage;
+//    NSInteger messageType =
+    BOOL isChatMessage = [[message objectForKey:DDBluetoothMessageTypeKey]
+                          integerValue]== DDBluetoothMessageTypeChat;
+    BOOL isNotificationMessage = [[message objectForKey:DDBluetoothMessageTypeKey]
+                                  integerValue]==DDBluetoothMessageTypeNotification;
+    BOOL isImageInfoMessage = [[message objectForKey:DDBluetoothMessageTypeKey]
+                           integerValue]== DDBluetoothMessageTypeImageInfo;
+    BOOL isImageDataMessage = [[message objectForKey:DDBluetoothMessageTypeKey]
+                               integerValue] == DDBluetoothMessageTypeImageData;
     
     NSString *info = [message objectForKey:DDBluetoothMessageContentKey];
     
@@ -875,27 +926,20 @@
     }
     else if(isChatMessage) {
         
-        if(self.unNamedDelegate && [self.unNamedDelegate respondsToSelector:@selector(recvMessage:)]) {
-            
-            NSString *chatStringMessage = [message objectForKey:DDBluetoothMessageContentKey];
-            [self.unNamedDelegate recvMessage:chatStringMessage];
-        }
-        NSDictionary *replyMessage = [self generateNotificationMessage:self.replyMessage];
-        [self sendMessageFromPeripheral:replyMessage];
+        [self handleChatMessageFromCentral:NO message:message];
     }
-//    else if (isImageMessage) {
-//
-//        if(self.unNamedDelegate && [self.unNamedDelegate respondsToSelector:@selector(recvImage:)]) {
-//
-//            NSString *imageDataString = [message objectForKey:DDBluetoothMessageContentKey];
-//            NSData *imageData = [[NSData alloc] initWithBase64EncodedString:imageDataString
-//                                                                    options:NSDataBase64DecodingIgnoreUnknownCharacters];
-//            UIImage *imageMessage = [UIImage imageWithData:imageData];
-//            [self.unNamedDelegate recvImage:imageMessage];
-//        }
-////        发送确认消息
-////        [self sendMessageFromPeripheral:self.replyMessage isNotification:YES];
-//    }
+    else if(isImageInfoMessage) {
+        
+        [self handleImageInfoMessage:message];
+        self.peripheralImageRecvMode = YES;
+    }
+    else if(isImageDataMessage) {
+        
+        if(!self.peripheralImageRecvMode) {
+            return;
+        }
+        [self handleImageDataMessage:message];
+    }
     
     // 外设  收到请求  回复状态为成功
     // 根据当前值符合约定与否，返回相应的result error值，发送方等候超时10秒
@@ -927,6 +971,137 @@
 
 
 #pragma mark - private methods
+
+// 文字消息处理函数
+- (void) handleChatMessageFromCentral:(BOOL)fromCentral message:(NSDictionary *)message {
+    
+    if(self.unNamedDelegate && [self.unNamedDelegate respondsToSelector:@selector(recvMessage:)]) {
+        
+        NSString *chatStringMessage = [message objectForKey:DDBluetoothMessageContentKey];
+        [self.unNamedDelegate recvMessage:chatStringMessage];
+    }
+    NSDictionary *replyMessage = [self generateNotificationMessage:self.replyMessage];
+    if(fromCentral) {
+        [self sendMessageFromCentral:replyMessage];
+    }
+    else {
+        [self sendMessageFromPeripheral:replyMessage];
+    }
+}
+
+// 图片准备信息处理函数
+- (void) handleImageInfoMessage :(NSDictionary *)message {
+    
+    NSInteger imageDataSize = [[message objectForKey:DDBluetoothMessageImageSizeKey] integerValue];
+    NSInteger imagePieceCount = [[message objectForKey:DDBluetoothMessageImageArrayLengthKey] integerValue];
+    NSInteger imagePieceSize = [[message objectForKey:DDBluetoothMessageImagePieceSizeKey] integerValue];
+    
+    self.recvImageDataSize = imageDataSize;
+    self.recvImagePieceSize = imagePieceSize;
+    self.recvImagePieceCount = imagePieceCount;
+    
+    self.imageDataPiecesArrayRecv = [[NSMutableArray alloc] initWithCapacity:imagePieceCount];
+    
+    // 接收方只发 下一个分片的索引
+    if([self.chatRole isEqualToString:@"central"]) {
+        
+        [self sendImageDataFromCentral:@"0"];
+    }
+    else {
+        
+        [self sendImageDataFromPeripheral:@"0"];
+    }
+}
+// 图片数据处理函数
+- (void) handleImageDataMessage :(NSDictionary *)message {
+    
+    // 可能为索引（来自接收方），或图片数据（来自发送方）
+    NSString *imageMessageContent = [message objectForKey:DDBluetoothMessageContentKey];
+    
+    // sendMode接收到的是图片分片索引
+    if(self.centralImageSendMode) {
+        
+        NSInteger index = [imageMessageContent integerValue];
+        // 表示发送完成
+        if(index = self.imageDataPiecesArraySend.count) {
+            
+            
+            
+            
+            
+            
+            
+            
+            
+        }
+        [self sendImageDataFromCentral:self.imageDataPiecesArraySend[index]];
+        return;
+    }
+    else if(self.peripheralImageSendMode) {
+        
+        NSInteger index = [imageMessageContent integerValue];
+        // 表示发送完成
+        if(index = self.imageDataPiecesArraySend.count) {
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+        }
+        [self sendImageDataFromPeripheral:self.imageDataPiecesArraySend[index]];
+        return;
+    }
+    
+    // 以下为接收图片数据
+    
+    if(self.recvImageDataPieceSumCount >= self.recvImagePieceCount) {
+        return;
+    }
+    // 简单校验数据完整，并保存数据
+    if(self.recvImageDataPieceSumCount == self.recvImagePieceCount -1) {
+        NSInteger lastPieceLength = self.recvImageDataSize - (self.recvImagePieceCount-1)*self.recvImagePieceSize;
+        if(lastPieceLength != imageMessageContent.length) {
+            NSString *resendIndex = [NSString stringWithFormat:@"%ld",self.recvImageDataPieceSumCount -1];
+            // 当前索引数据要求重发
+            if(self.centralImageRecvMode) {
+                
+                [self sendImageDataFromCentral:resendIndex];
+            }else if(self.peripheralImageRecvMode) {
+                
+                [self sendImageDataFromPeripheral:resendIndex];
+            }
+        }
+    }
+    else {
+        if(self.recvImagePieceSize != imageMessageContent.length) {
+            NSString *resendIndex = [NSString stringWithFormat:@"%ld",self.recvImageDataPieceSumCount -1];
+            // 当前索引要求重发
+            if(self.centralImageRecvMode) {
+                
+                [self sendImageDataFromCentral:resendIndex];
+            }else if(self.peripheralImageRecvMode) {
+                
+                [self sendImageDataFromPeripheral:resendIndex];
+            }
+        }
+    }
+    
+    // 校验完成 保存数据 并发送下一个分片索引
+    [self.imageDataPiecesArrayRecv addObject:imageMessageContent];
+    NSString *resendIndex = [NSString stringWithFormat:@"%ld",self.recvImageDataPieceSumCount];
+    if(self.centralImageRecvMode) {
+        
+        [self sendImageDataFromCentral:resendIndex];
+    }else if(self.peripheralImageRecvMode) {
+        
+        [self sendImageDataFromPeripheral:resendIndex];
+    }
+}
 
 // 外设端添加收听central，和当前能发送数据的最大长度
 - (void) addCentralToDeviceArray :(CBCentral *)central maxMessageLength:(NSInteger) maxLength {
@@ -1038,60 +1213,152 @@
 }
 // 发送图片等文件类
 // 返回错误--1.尺寸超过 2.失去连接对象
-//- (BOOL) sendImageFromCentral :(UIImage *)message {
-//
-//    // 判断central端发送消息尺寸限制
-//    // 512bytes 是在iphone6 设备上的测试结果，其他设备待测试
-//
-//
-//    NSData *imageData = UIImageJPEGRepresentation(message, 0.1);
-////    NSInteger imageDataLength = [imageData length];  // 长度超512则
-//    NSString *imageDataString = [imageData base64EncodedStringWithOptions:NSDataBase64Encoding64CharacterLineLength];
-//    NSDictionary *messageFromCentral = [self generateImageMessage:imageDataString];
-//
-////    NSDictionary *messageFromCentral = [self generateImageMessageData:imageData];
-////    使用 dataWithJSONObject 时，参数json的顶层元素必须是 NSArray或NSDictionary，组成员素不能有NSData
-//
-//    NSData *infoData = [NSJSONSerialization dataWithJSONObject:messageFromCentral
-//                                                       options:NSJSONWritingPrettyPrinted
-//                                                         error:nil];
-//
-//    if(!self.peripheralsFollow || self.peripheralsFollow.count == 0) {
-//        return NO;
-//    }
-//    [self.peripheralsFollow[0] writeValue:infoData
-//                        forCharacteristic:self.characteristicFollow
-//                                     type:CBCharacteristicWriteWithResponse];
-//    return YES;
-//}
-//- (BOOL) sendImageFromPeripheral :(UIImage *)message {
-//
-//    // 判断paripheral端发送消息尺寸限制
-////    NSInteger maxLength = [self.centralsMaxMessageLength[0] integerValue];
-//
-//    NSData *imageData = UIImageJPEGRepresentation(message, 1);
-//    //根据尺寸大小  进行压缩比例调节
-////    NSInteger *imageDataLength = imageData.length;
-////    if(imageDataLength > maxLength) {
-////
-////        return NO;
-////    }
-//
-//    NSString *imageDataString = [imageData base64EncodedStringWithOptions:NSDataBase64Encoding64CharacterLineLength];
-//    NSDictionary *messageFromPeripheral = [self generateImageMessage:imageDataString];
-//    NSData *data = [NSJSONSerialization dataWithJSONObject:messageFromPeripheral
-//                                                   options:NSJSONWritingPrettyPrinted
-//                                                     error:nil];
-//
-//    self.tempCharacteristicValue = data;
-//    if(!self.centralsFollow || self.centralsFollow.count == 0) {
-//        return NO;
-//    }
-//    [self.peripheralManager updateValue:data
-//                      forCharacteristic:self.characteristicForAdv
-//                   onSubscribedCentrals:self.centralsFollow];
-//    return YES;
-//}
+/**
+ 由central端发送文件时调用
+ 函数功能：将图片文件分片，切换到central sendImage模式，并发送图片分片信息概述
+ 函数目的：使对端做好接收准备，设置相关校验数据，并准备接收
+ */
+- (BOOL) sendImageFromCentral :(UIImage *)message {
+
+    // 判断central端发送消息尺寸限制
+    // 512bytes 是在iphone6 设备上的测试结果，其他设备待测试
+
+
+    NSData *imageData = UIImageJPEGRepresentation(message, 1);
+    NSInteger imageDataLength = [imageData length];
+    
+    BOOL tooBig = imageDataLength > 200*1024*1024;              // 暂定最大200兆
+    if(tooBig) {
+        return NO;
+    }
+    
+    NSInteger imageDataPieceLength = 512-50;                       // 分片长度最大值减50
+    NSInteger additionalOneLength = imageDataLength % imageDataPieceLength;
+    NSInteger imageDataArrayLength = imageDataLength / imageDataPieceLength;
+    if(additionalOneLength != 0){
+        imageDataArrayLength += 1;
+    }
+    self.imageDataPiecesArraySend = [[NSMutableArray alloc] initWithCapacity:imageDataArrayLength];
+    NSString *imageDataString = [imageData base64EncodedStringWithOptions:NSDataBase64Encoding64CharacterLineLength];
+    
+    //data分片
+    for(NSInteger i=0; i<imageDataArrayLength; ++i) {
+        NSInteger subStringLength = imageDataPieceLength;
+        if(i == imageDataArrayLength -1) {
+            subStringLength = additionalOneLength;
+        }
+        NSString *subString = [imageDataString substringWithRange:NSMakeRange(i*imageDataPieceLength, subStringLength)];
+        [self.imageDataPiecesArraySend addObject:subString];
+    }
+    
+    
+    NSDictionary *imageInfoMessage = [self generateImageInfoWithImageSize:imageDataLength arrayLength:imageDataArrayLength pieceSize:imageDataPieceLength];
+
+//    测试类型
+//    NSDictionary *messageFromCentral = [self generateImageMessageData:imageData];
+//    使用 dataWithJSONObject 时，参数json的顶层元素必须是 NSArray或NSDictionary，组成元素不能有NSData
+
+    NSData *infoData = [NSJSONSerialization dataWithJSONObject:imageInfoMessage
+                                                       options:NSJSONWritingPrettyPrinted
+                                                         error:nil];
+    
+    if(!self.peripheralsFollow || self.peripheralsFollow.count == 0) {
+        return NO;
+    }
+    
+    [self.peripheralsFollow[0] writeValue:infoData
+                        forCharacteristic:self.characteristicFollow
+                                     type:CBCharacteristicWriteWithResponse];
+    self.centralImageSendMode = YES;
+    
+    return YES;
+}
+/**
+ 由peripheral端发送文件时调用
+ 函数功能：将图片文件分片，切换到peripheral sendImage模式，并发送图片分片信息概述
+ 函数目的：使对端做好接收准备，设置相关校验数据，并准备接收
+ */
+- (BOOL) sendImageFromPeripheral :(UIImage *)message {
+
+    NSData *imageData = UIImageJPEGRepresentation(message, 1);
+    NSInteger imageDataLength = [imageData length];
+    
+    BOOL tooBig = imageDataLength > 200*1024*1024;                                    // 暂定最大200兆
+    if(tooBig) {
+        return NO;
+    }
+    
+    NSInteger imageDataPieceLength = [self.centralsMaxMessageLength[0] integerValue]-50; // 分片长度最大值减50
+    NSInteger additionalOneLength = imageDataLength % imageDataPieceLength;
+    NSInteger imageDataArrayLength = imageDataLength / imageDataPieceLength;
+    if(additionalOneLength != 0){
+        imageDataArrayLength += 1;
+    }
+    self.imageDataPiecesArraySend = [[NSMutableArray alloc] initWithCapacity:imageDataArrayLength];
+    NSString *imageDataString = [imageData base64EncodedStringWithOptions:NSDataBase64Encoding64CharacterLineLength];
+    
+    //data分片
+    for(NSInteger i=0; i<imageDataArrayLength; ++i) {
+        NSInteger subStringLength = imageDataPieceLength;
+        if(i == imageDataArrayLength -1) {
+            subStringLength = additionalOneLength;
+        }
+        NSString *subString = [imageDataString substringWithRange:NSMakeRange(i*imageDataPieceLength, subStringLength)];
+        [self.imageDataPiecesArraySend addObject:subString];
+    }
+    
+    
+    NSDictionary *imageInfoMessage = [self generateImageInfoWithImageSize:imageDataLength arrayLength:imageDataArrayLength pieceSize:imageDataPieceLength];
+    
+    NSData *infoData = [NSJSONSerialization dataWithJSONObject:imageInfoMessage
+                                                       options:NSJSONWritingPrettyPrinted
+                                                         error:nil];
+    
+    if(!self.peripheralsFollow || self.peripheralsFollow.count == 0) {
+        return NO;
+    }
+    
+    [self.peripheralsFollow[0] writeValue:infoData
+                        forCharacteristic:self.characteristicFollow
+                                     type:CBCharacteristicWriteWithResponse];
+    self.peripheralImageSendMode = YES;
+    
+    return YES;
+}
+// 发送图片数据接口
+// from central
+- (void) sendImageDataFromCentral :(NSString *)imageDataMessage {
+    
+    NSDictionary *infoDic = [self generateImageMessage:imageDataMessage];
+    NSData *infoData = [NSJSONSerialization dataWithJSONObject:infoDic
+                                                       options:NSJSONWritingPrettyPrinted
+                                                         error:nil];
+    
+    if(!self.peripheralsFollow || self.peripheralsFollow.count == 0) {
+        return;
+    }
+    [self.peripheralsFollow[0] writeValue:infoData
+                        forCharacteristic:self.characteristicFollow
+                                     type:CBCharacteristicWriteWithResponse];
+}
+// 发送图片数据接口
+// from peripheral
+- (void) sendImageDataFromPeripheral :(NSString *)imageDataMessage {
+    
+    NSDictionary *infoDic = [self generateImageMessage:imageDataMessage];
+    NSData *data = [NSJSONSerialization dataWithJSONObject:infoDic
+                                                   options:NSJSONWritingPrettyPrinted
+                                                     error:nil];
+    
+    self.tempCharacteristicValue = data;
+    if(!self.centralsFollow || self.centralsFollow.count == 0) {
+        
+    }
+    [self.peripheralManager updateValue:data
+                      forCharacteristic:self.characteristicForAdv
+                   onSubscribedCentrals:self.centralsFollow];
+}
+
 
 #pragma mark - 消息封装
 // 消息封装接口
@@ -1117,17 +1384,6 @@
     
     return [retMsg copy];
 }
-// 发送图片
-//- (NSDictionary *) generateImageMessage :(NSString *)message {
-//
-//    NSMutableDictionary *retMsg = [[NSMutableDictionary alloc] init];
-//
-//    NSNumber *messageTypeImage = [NSNumber numberWithInt : DDBluetoothMessageTypeImage];
-//    [retMsg setObject:messageTypeImage forKey:DDBluetoothMessageTypeKey];
-//    [retMsg setObject:message forKey:DDBluetoothMessageContentKey];
-//
-//    return [retMsg copy];
-//}
 // 发送自己信息给对端（给peripheral端）
 - (NSDictionary *) generateHelloMessage :(NSDictionary *)message {
     
@@ -1137,7 +1393,31 @@
     [returnDic setObject:messageTypeNotification forKey:DDBluetoothMessageTypeKey];
     [returnDic setObject:@"helloMessage" forKey:DDBluetoothMessageContentKey];
     
-    return returnDic;
+    return [returnDic copy];
+}
+// 图片 传输过程中，双方都是用此接口生成消息 message对于发送端是图片数据，对于接收端是下一个分片的索引string
+- (NSDictionary *) generateImageMessage :(NSString *)message {
+
+    NSMutableDictionary *retMsg = [[NSMutableDictionary alloc] init];
+
+    NSNumber *messageTypeImage = [NSNumber numberWithInt : DDBluetoothMessageTypeImageData];
+    [retMsg setObject:messageTypeImage forKey:DDBluetoothMessageTypeKey];
+    [retMsg setObject:message forKey:DDBluetoothMessageContentKey];
+
+    return [retMsg copy];
+}
+// 图片的准备信息
+- (NSDictionary *) generateImageInfoWithImageSize:(NSInteger)size arrayLength:(NSInteger )arrayLen pieceSize:(NSInteger)pieceSize {
+    
+    NSMutableDictionary *imageInfo = [[NSMutableDictionary alloc] init];
+    
+    NSNumber *messageTypeImageInfo = [NSNumber numberWithInt:DDBluetoothMessageTypeImageInfo];
+    [imageInfo setObject:messageTypeImageInfo forKey:DDBluetoothMessageTypeKey];
+    [imageInfo setObject:[NSNumber numberWithInteger:size] forKey:DDBluetoothMessageImageSizeKey];
+    [imageInfo setObject:[NSNumber numberWithInteger:arrayLen] forKey:DDBluetoothMessageImageArrayLengthKey];
+    [imageInfo setObject:[NSNumber numberWithInteger:pieceSize] forKey:DDBluetoothMessageImagePieceSizeKey];
+    
+    return [imageInfo copy];
 }
 
 

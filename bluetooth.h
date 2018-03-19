@@ -18,20 +18,6 @@ typedef NS_ENUM(NSInteger, DDBluetoothUnAvailableStatus) {
     DDBluetoothUnReachable              //蓝牙不可达--对方关闭蓝牙，或超出距离，或(peripheral端)app强退
 };
 
-/**
- 消息类型
- */
-typedef NS_ENUM(NSInteger, DDBluetoothMessageType) {
-    
-    DDBluetoothMessageTypeChat = 1,     //文字聊天信息
-    DDBluetoothMessageTypeNotification, //文字通知信息：连接成功发送设备信息，主动断开发送断开信息
-    DDBluetoothMessageTypeImage         //图片信息
-};
-
-#define DDBluetoothMessageTypeKey @"DDBluetoothMessageTypeKey"          //消息类型标识
-#define DDBluetoothMessageContentKey @"DDBluetoothMessageContentKey"    //消息内容标识
-#define DDBluetoothMessagePeerNameKey @"DDBluetoothMessagePeerNameKey"  //对端设备名称（连接完成后消息）
-
 
 
 @protocol DDBluetoothDelegate<NSObject>
@@ -162,13 +148,13 @@ typedef void (^sendMsgAction)(BOOL successOrFail);
 
 
 // 发送图片 暂时取消，限制于蓝牙数据报式传输，和单次传输的大小限制
-//- (BOOL) sendImageToPeer :(UIImage *)image;
+- (BOOL) sendImageToPeer :(UIImage *)image;
 
 // 发送图片
 // 传递成功失败的回调
 // 返回值，接口的调用成功（失败情况：上一次调用此接口未结束--未超时或回调）
 // 使用时一定注意循环引用问题！！！！！！！！！
-//- (BOOL) sendImageToPeer :(UIImage *)image sendAction:(void (^)(BOOL success))action;
+- (BOOL) sendImageToPeer :(UIImage *)image sendAction:(void (^)(BOOL success))action;
 
 // 发送文件、、、、、
 // 文件等其他类型应该提供其他接口
