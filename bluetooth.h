@@ -11,6 +11,17 @@
 #import <CoreBluetooth/CoreBluetooth.h>
 
 
+#define DDBluetoothMessageTypeKey               @"DDBluetoothMessageTypeKey"               //消息类型标识
+#define DDBluetoothMessageContentKey            @"DDBluetoothMessageContentKey"            //消息内容标识
+#define DDBluetoothMessagePeerNameKey           @"DDBluetoothMessagePeerNameKey"           //对端设备名称（连接完成后消息）
+#define DDBluetoothMessageImageSizeKey          @"DDBluetoothMessageImageInfoKey"          //图片准备消息--文件总尺寸
+#define DDBluetoothMessageImageArrayLengthKey   @"DDBluetoothMessageImageArrayLengthKey"   //图片准备消息--总分片数
+#define DDBluetoothMessageImagePieceSizeKey     @"DDBluetoothMessageImagePieceSizeKey"     //图片准备信息--分片尺寸
+#define DDBluetoothMessageImageOverTimerKey     @"DDBluetoothMessageImageOverTimerKey"     //发送端超时消息：value为BOOL
+
+
+
+
 typedef NS_ENUM(NSInteger, DDBluetoothUnAvailableStatus) {
     
     DDBluetoothUnAuthorized,            //未授权
@@ -52,7 +63,7 @@ typedef NS_ENUM(NSInteger, DDBluetoothUnAvailableStatus) {
  外设端 / 中心端
  arg：收到的图片数据
  */
-//- (void) recvImage :(UIImage *)image;
+- (void) recvImage :(UIImage *)image;
 
 /**
  对方主动断开
@@ -146,14 +157,20 @@ typedef void (^sendMsgAction)(BOOL successOrFail);
 
 
 
+/**
+ 发送图片
+ arg:image 发送的图片对象
+ 返回值：失败情况--图像超出大小限制  暂定限制200兆
+ */
+//- (BOOL) sendImageToPeer :(UIImage *)image;  //暂时取消此接口，只用带回调，带互斥，带超时的版本
 
-// 发送图片 暂时取消，限制于蓝牙数据报式传输，和单次传输的大小限制
-- (BOOL) sendImageToPeer :(UIImage *)image;
-
-// 发送图片
-// 传递成功失败的回调
-// 返回值，接口的调用成功（失败情况：上一次调用此接口未结束--未超时或回调）
-// 使用时一定注意循环引用问题！！！！！！！！！
+/**
+ 发送图片
+ arg:image 发送图片对象
+ arg：action 成功失败的回调
+ 返回值，接口的调用成功（失败情况：上一次调用此接口未结束--未超时或回调）
+ 使用时一定注意循环引用问题！！！！！！！！！
+ */
 - (BOOL) sendImageToPeer :(UIImage *)image sendAction:(void (^)(BOOL success))action;
 
 // 发送文件、、、、、
