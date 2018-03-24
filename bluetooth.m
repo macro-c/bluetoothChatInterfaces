@@ -339,11 +339,11 @@ typedef NS_ENUM(NSInteger, DDBluetoothMessageType) {
 // 带回调的发送图片消息，超时限制，互斥限制
 - (BOOL) sendImageToPeer:(UIImage *)image sendAction:(void (^)(BOOL))action {
     
-    if(!self.imageSendMsgHandled) {
-        
-        // 当前带回调发送消息模式，必须等待返回值结果才能继续发送
-        return NO;
-    }
+//    if(!self.imageSendMsgHandled) {
+//
+//        // 当前带回调发送消息模式，必须等待返回值结果才能继续发送
+//        return NO;
+//    }
     
     [self sendImageToPeer:image];
     if(action) {
@@ -1045,9 +1045,6 @@ typedef NS_ENUM(NSInteger, DDBluetoothMessageType) {
     }
     else if(isImageDataMessage) {
         
-        if(!self.peripheralImageRecvMode) {
-            return;
-        }
         // 发送端超时，接收端处理
         if(isImageSendOverTime) {
             
@@ -1196,10 +1193,11 @@ typedef NS_ENUM(NSInteger, DDBluetoothMessageType) {
                 [self.imageSendTikTok invalidate];
                 self.imageSendTikTok = nil;
             }
+            return;
         }
-        NSLog(@"收到索引是：%ld",index);
-        if(index > self.imageDataPiecesArraySend.count-1) {
-            NSLog(@"收到不合理索引值 :%ld",index);
+        NSLog(@"收到索引是：%d",index);
+        if(index > self.imageDataPiecesArraySend.count) {
+            NSLog(@"收到不合理索引值 :%d",index);
             return;
         }
         [self sendImageDataFromCentral:self.imageDataPiecesArraySend[index] isSendOverTime:NO];
@@ -1253,7 +1251,7 @@ typedef NS_ENUM(NSInteger, DDBluetoothMessageType) {
     if(self.recvImageDataPieceSumCount == self.recvImagePieceCount -1) {
         NSInteger lastPieceLength = self.recvImageDataSize - (self.recvImagePieceCount-1)*self.recvImagePieceSize;
         if(lastPieceLength != imageMessageContent.length) {
-            NSString *resendIndex = [NSString stringWithFormat:@"%ld",self.recvImageDataPieceSumCount -1];
+            NSString *resendIndex = [NSString stringWithFormat:@"%d",self.recvImagePieceCount -1];
             // 当前索引数据要求重发
             if(self.centralImageRecvMode) {
                 
@@ -1266,7 +1264,7 @@ typedef NS_ENUM(NSInteger, DDBluetoothMessageType) {
     }
     else {
         if(self.recvImagePieceSize != imageMessageContent.length) {
-            NSString *resendIndex = [NSString stringWithFormat:@"%ld",self.recvImageDataPieceSumCount -1];
+            NSString *resendIndex = [NSString stringWithFormat:@"%d",self.recvImageDataPieceSumCount];
             // 当前索引要求重发
             if(self.centralImageRecvMode) {
                 
@@ -1281,17 +1279,17 @@ typedef NS_ENUM(NSInteger, DDBluetoothMessageType) {
     // 校验完成 保存数据 并发送下一个分片索引
     [self.imageDataPiecesArrayRecv addObject:imageMessageContent];
     self.recvImageDataPieceSumCount++;
-    NSString *resendIndex = [NSString stringWithFormat:@"%ld",(long)self.recvImageDataPieceSumCount];
+    NSString *nextSendIndex = [NSString stringWithFormat:@"%ld",(long)self.recvImageDataPieceSumCount];
     
     //test
-    NSLog(@"发送索引值：%ld",self.recvImageDataPieceSumCount);
+    NSLog(@"发送索引值：%d",self.recvImageDataPieceSumCount);
     
     if(self.centralImageRecvMode) {
         
-        [self sendImageDataFromCentral:resendIndex isSendOverTime:NO];
+        [self sendImageDataFromCentral:nextSendIndex isSendOverTime:NO];
     }else if(self.peripheralImageRecvMode) {
         
-        [self sendImageDataFromPeripheral:resendIndex isSendOverTime:NO];
+        [self sendImageDataFromPeripheral:nextSendIndex isSendOverTime:NO];
     }
     // 接收完毕
     if(self.recvImageDataPieceSumCount == self.recvImagePieceCount) {
@@ -1448,24 +1446,26 @@ typedef NS_ENUM(NSInteger, DDBluetoothMessageType) {
 
 
     NSData *imageData = UIImageJPEGRepresentation(message, 1);
-    NSInteger imageDataLength = [imageData length];
+    //NSInteger imageDataLength = [imageData length]; // NSData转NSString 尺寸变
     
-    BOOL tooBig = imageDataLength > 200*1024*1024;              // 暂定最大200兆
-    if(tooBig) {
-        return NO;
-    }
+    NSString *imageDataString = [imageData base64EncodedStringWithOptions:NSDataBase64Encoding64CharacterLineLength];
     
     //test
     NSInteger maxMessageLength = 350;
-    
+    NSInteger imageDataLength = imageDataString.length;
     NSInteger imageDataPieceLength = maxMessageLength-20;                       // 分片长度最大值减50
     NSInteger additionalOneLength = imageDataLength % imageDataPieceLength;
     NSInteger imageDataArrayLength = imageDataLength / imageDataPieceLength;
+    self.imageDataPiecesArraySend = [[NSMutableArray alloc] initWithCapacity:imageDataArrayLength];
+    
     if(additionalOneLength != 0){
         imageDataArrayLength += 1;
     }
-    self.imageDataPiecesArraySend = [[NSMutableArray alloc] initWithCapacity:imageDataArrayLength];
-    NSString *imageDataString = [imageData base64EncodedStringWithOptions:NSDataBase64Encoding64CharacterLineLength];
+    
+    BOOL tooBig = imageDataLength > 200*1024*1024;              // 暂定最大  兆
+    if(tooBig) {
+        return NO;
+    }
     
     //data分片
     for(NSInteger i=0; i<imageDataArrayLength; ++i) {
@@ -1474,6 +1474,8 @@ typedef NS_ENUM(NSInteger, DDBluetoothMessageType) {
             subStringLength = additionalOneLength;
         }
         NSString *subString = [imageDataString substringWithRange:NSMakeRange(i*imageDataPieceLength, subStringLength)];
+        //NSData *subData = [imageData subdataWithRange:NSMakeRange(i*imageDataPieceLength, subStringLength)];
+        //NSString *subString = [subData base64EncodedStringWithOptions:NSDataBase64Encoding64CharacterLineLength];
         [self.imageDataPiecesArraySend addObject:subString];
     }
     
@@ -1507,21 +1509,23 @@ typedef NS_ENUM(NSInteger, DDBluetoothMessageType) {
 - (BOOL) sendImageInfoFromPeripheral :(UIImage *)message {
 
     NSData *imageData = UIImageJPEGRepresentation(message, 1);
-    NSInteger imageDataLength = [imageData length];
+    //NSInteger imageDataLength = [imageData length]; // NSData转NSString 尺寸变
     
-    BOOL tooBig = imageDataLength > 200*1024*1024;                                    // 暂定最大200兆
-    if(tooBig) {
-        return NO;
-    }
-    
-    NSInteger imageDataPieceLength = [self.centralsMaxMessageLength[0] integerValue]-50; // 分片长度最大值减50
+    NSString *imageDataString = [imageData base64EncodedStringWithOptions:NSDataBase64Encoding64CharacterLineLength];
+    NSInteger imageDataLength = imageDataString.length;
+    NSInteger imageDataPieceLength = [self.centralsMaxMessageLength[0] integerValue]-40;
     NSInteger additionalOneLength = imageDataLength % imageDataPieceLength;
     NSInteger imageDataArrayLength = imageDataLength / imageDataPieceLength;
+    self.imageDataPiecesArraySend = [[NSMutableArray alloc] initWithCapacity:imageDataArrayLength];
+    
     if(additionalOneLength != 0){
         imageDataArrayLength += 1;
     }
-    self.imageDataPiecesArraySend = [[NSMutableArray alloc] initWithCapacity:imageDataArrayLength];
-    NSString *imageDataString = [imageData base64EncodedStringWithOptions:NSDataBase64Encoding64CharacterLineLength];
+    
+    BOOL tooBig = imageDataLength > 200*1024*1024;              // 暂定最大  兆
+    if(tooBig) {
+        return NO;
+    }
     
     //data分片
     for(NSInteger i=0; i<imageDataArrayLength; ++i) {
@@ -1540,13 +1544,9 @@ typedef NS_ENUM(NSInteger, DDBluetoothMessageType) {
                                                        options:NSJSONWritingPrettyPrinted
                                                          error:nil];
     
-    if(!self.peripheralsFollow || self.peripheralsFollow.count == 0) {
-        return NO;
-    }
-    
-    [self.peripheralsFollow[0] writeValue:infoData
-                        forCharacteristic:self.characteristicFollow
-                                     type:CBCharacteristicWriteWithResponse];
+    [self.peripheralManager updateValue:infoData
+                      forCharacteristic:self.characteristicForAdv
+                   onSubscribedCentrals:self.centralsFollow];
     self.peripheralImageSendMode = YES;
     
     return YES;
